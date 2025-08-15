@@ -107,11 +107,17 @@ Cost Frame::calculateCost(const std::vector<cv::Mat> &synthFrame)
         std::cerr << " real frame size " << _realFrame.size() << " synth frame size " << synthFrame.size();
     }
 
+    // Compute per-slice L2 norms in parallel, then sum serially to keep deterministic ordering
+    const int numSlices = static_cast<int>(_realFrame.size());
+    std::vector<double> sliceCosts(static_cast<size_t>(numSlices), 0.0);
+    cv::parallel_for_(cv::Range(0, numSlices), [&](const cv::Range &range) {
+        for (int i = range.start; i < range.end; ++i)
+        {
+            sliceCosts[static_cast<size_t>(i)] = cv::norm(_realFrame[static_cast<size_t>(i)], synthFrame[static_cast<size_t>(i)], cv::NORM_L2);
+        }
+    });
     double totalCost = 0.0;
-    for (size_t i = 0; i < _realFrame.size(); ++i)
-    {
-        totalCost += cv::norm(_realFrame[i], synthFrame[i], cv::NORM_L2);
-    }
+    for (double v : sliceCosts) totalCost += v;
     return totalCost;
 }
 
