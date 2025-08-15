@@ -1,0 +1,15 @@
++-----------------------------------------------+------------------+---------------------------+------------------------+---------------+
+| Function                                      | % of total time  | Conservative optimization | Est. total time saved  | Est. added LOC|
++-----------------------------------------------+------------------+---------------------------+------------------------+---------------+
+| Frame::calculateCost(...)                     | 31.05%           | 20%                       | 6.21% (~4.4 min)       | +40           |
+| Spheroid::draw(...)                           | 11.87%           | 15%                       | 1.78% (~1.3 min)       | +35           |
+| Frame::generateSynthFrameFast(...)            | 11.87%           | 10%                       | 1.19% (~0.9 min)       | +20           |
+| Vector reallocation (various)                 | ~3.70%           | 20%                       | 0.74% (~0.5 min)       | +15           |
+| Spheroid::checkIfCellsOverlap(...)            | 3.65%            | 20%                       | 0.73% (~0.5 min)       | +50           |
+| PerturbParams::getPerturbOffset()             | 3.20%            | 10%                       | 0.32% (~0.2 min)       | +12           |
+| Frame::perturb()                              | 1.83%            | 10%                       | 0.18% (~0.1 min)       | +10           |
++-----------------------------------------------+------------------+---------------------------+------------------------+---------------+
+
+Baseline (0–19 frames): WALL 1:11:00; USER 4216.60s; SYS 34.88s (instrumented build for profiling).
+EOF
+; echo "Wrote $summary_path"; ls -l C++/profiling/ | cat; echo "Existing gprof files:"; ls -l C++/profiling/gprof/gprof_full*.txt 2>/dev/null | cat
