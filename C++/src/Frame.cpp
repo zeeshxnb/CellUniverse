@@ -37,8 +37,24 @@ Frame::Frame(const std::vector<cv::Mat> &realFrame, const SimulationConfig &simu
     
     _synthFrame = generateSynthFrame();
     // Initialize cached cost for the initial synthetic frame
-    _cachedSynthCost = calculateCost(_synthFrame);
-    _cachedSynthCostValid = true;
+    _sliceSSR.assign(_synthFrame.size(), 0.0);
+    {
+        // Initialize per-slice SSR and cached total L2 cost
+        const size_t n = _synthFrame.size();
+        std::vector<double> perSliceL2(n, 0.0);
+        cv::parallel_for_(cv::Range(0, static_cast<int>(n)), [&](const cv::Range &range) {
+            for (int i = range.start; i < range.end; ++i)
+            {
+                double l2 = cv::norm(_realFrame[static_cast<size_t>(i)], _synthFrame[static_cast<size_t>(i)], cv::NORM_L2);
+                perSliceL2[static_cast<size_t>(i)] = l2;
+                _sliceSSR[static_cast<size_t>(i)] = l2 * l2;
+            }
+        });
+        double total = 0.0;
+        for (double v : perSliceL2) total += v;
+        _cachedSynthCost = total;
+        _cachedSynthCostValid = true;
+    }
     //std::cout << " SYNTH FRAME SIZE: " << _synthFrame.size();
 
 }
@@ -283,20 +299,41 @@ CostCallbackPair Frame::perturb()
         return {0.0, [](bool accept) {}};
     }
 
-    // Synthesize new synthetic image
+    // Synthesize new synthetic image (only within ROI where possible)
     auto newSynthFrame = generateSynthFrameFast(oldCell, cells[index]);
 
-    // Get the cost of the new synthetic image
-    double newCost = calculateCost(newSynthFrame);
+    // Compute incremental cost using ROI: update slice SSR only where pixels changed
+    const size_t numSlices = newSynthFrame.size();
+    std::vector<double> newSliceSSR(numSlices);
+    cv::parallel_for_(cv::Range(0, static_cast<int>(numSlices)), [&](const cv::Range &range) {
+        for (int i = range.start; i < range.end; ++i)
+        {
+            const cv::Mat &real = _realFrame[static_cast<size_t>(i)];
+            const cv::Mat &newSynth = newSynthFrame[static_cast<size_t>(i)];
+            // Compute SSR over full slice (safe, simple). Later: restrict to ROI to reduce work further.
+            cv::Mat diff;
+            cv::absdiff(real, newSynth, diff);
+            cv::Mat diffSq;
+            cv::multiply(diff, diff, diffSq);
+            newSliceSSR[static_cast<size_t>(i)] = static_cast<double>(cv::sum(diffSq)[0]);
+        }
+    });
+    // Convert SSR to L2 per slice and sum serially for determinism
+    double newCost = 0.0;
+    for (size_t i = 0; i < numSlices; ++i)
+    {
+        newCost += std::sqrt(newSliceSSR[i]);
+    }
 
     // If the difference is greater than the threshold, revert to the old cell
     double oldCost = _cachedSynthCostValid ? _cachedSynthCost : calculateCost(_synthFrame);
-    CallBackFunc callback = [this, newSynthFrame, newCost, oldCell, index](bool accept)
+    CallBackFunc callback = [this, newSynthFrame, newSliceSSR, newCost, oldCell, index](bool accept)
     {
         if (accept)
         {
             this->_synthFrame = newSynthFrame;
-            // Accepted: update cache to reflect new current synth frame
+            // Accepted: update per-slice SSR and cached total cost
+            this->_sliceSSR = newSliceSSR;
             this->_cachedSynthCost = newCost;
             this->_cachedSynthCostValid = true;
         }
@@ -354,14 +391,29 @@ CostCallbackPair Frame::split()
     }
 
     auto newSynthFrame = generateSynthFrame(); 
-    double newCost = calculateCost(newSynthFrame);
+    // Compute incremental cost using SSR for full slices (exact). Later: restrict to ROI
+    const size_t numSlices = newSynthFrame.size();
+    std::vector<double> newSliceSSR(numSlices);
+    cv::parallel_for_(cv::Range(0, static_cast<int>(numSlices)), [&](const cv::Range &range) {
+        for (int i = range.start; i < range.end; ++i)
+        {
+            const cv::Mat &real = _realFrame[static_cast<size_t>(i)];
+            const cv::Mat &newSynth = newSynthFrame[static_cast<size_t>(i)];
+            cv::Mat diff; cv::absdiff(real, newSynth, diff);
+            cv::Mat diffSq; cv::multiply(diff, diff, diffSq);
+            newSliceSSR[static_cast<size_t>(i)] = static_cast<double>(cv::sum(diffSq)[0]);
+        }
+    });
+    double newCost = 0.0;
+    for (size_t i = 0; i < numSlices; ++i) newCost += std::sqrt(newSliceSSR[i]);
     double oldCost = _cachedSynthCostValid ? _cachedSynthCost : calculateCost(_synthFrame);
 
-    CallBackFunc callback = [this, newSynthFrame, newCost, oldCell, index](bool accept)
+    CallBackFunc callback = [this, newSynthFrame, newSliceSSR, newCost, oldCell, index](bool accept)
     {
         if (accept)
         {
             this->_synthFrame = newSynthFrame;
+            this->_sliceSSR = newSliceSSR;
             this->_cachedSynthCost = newCost;
             this->_cachedSynthCostValid = true;
         }

@@ -49,6 +49,8 @@ private:
     // Cached cost of the currently accepted synthetic frame. Valid as long as _synthFrame hasn't changed.
     double _cachedSynthCost = 0.0;
     bool _cachedSynthCostValid = false;
+    // Per-slice sum of squared residuals (SSR). L2 per slice is sqrt(SSR).
+    std::vector<double> _sliceSSR;
     cv::Size getImageShape();
     Cost costOfPerturb(const std::string &perturbParam, float perturbVal, size_t index, const Cell &oldCell);
     ParamImageMap getSynthPerturbedCells(size_t index, const ParamValMap &params, float perturbLength, const Cell &oldCell);

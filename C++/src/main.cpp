@@ -133,9 +133,13 @@ int main(int argc, char *argv[])
     auto start = std::chrono::steady_clock::now();
     for (int frame = 0; frame < lineage.length(); ++frame)
     {
+        auto frame_start = std::chrono::steady_clock::now();
         lineage.optimize(frame);
         lineage.copyCellsForward(frame + 1);
         lineage.saveFrame(frame);
+        auto frame_end = std::chrono::steady_clock::now();
+        std::chrono::duration<double> frame_elapsed = frame_end - frame_start;
+        std::cout << "Frame " << frame << " time: " << frame_elapsed.count() << " seconds" << std::endl;
         // lineage.saveCells(frame); // TODO: Fix this
     }
     auto end = std::chrono::steady_clock::now();
