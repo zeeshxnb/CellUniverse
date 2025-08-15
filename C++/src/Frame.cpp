@@ -36,6 +36,9 @@ Frame::Frame(const std::vector<cv::Mat> &realFrame, const SimulationConfig &simu
     //    padRealImage();
     
     _synthFrame = generateSynthFrame();
+    // Initialize cached cost for the initial synthetic frame
+    _cachedSynthCost = calculateCost(_synthFrame);
+    _cachedSynthCostValid = true;
     //std::cout << " SYNTH FRAME SIZE: " << _synthFrame.size();
 
 }
@@ -281,16 +284,20 @@ CostCallbackPair Frame::perturb()
     double newCost = calculateCost(newSynthFrame);
 
     // If the difference is greater than the threshold, revert to the old cell
-    double oldCost = calculateCost(_synthFrame);
-    CallBackFunc callback = [this, newSynthFrame, oldCell, index](bool accept)
+    double oldCost = _cachedSynthCostValid ? _cachedSynthCost : calculateCost(_synthFrame);
+    CallBackFunc callback = [this, newSynthFrame, newCost, oldCell, index](bool accept)
     {
         if (accept)
         {
             this->_synthFrame = newSynthFrame;
+            // Accepted: update cache to reflect new current synth frame
+            this->_cachedSynthCost = newCost;
+            this->_cachedSynthCostValid = true;
         }
         else
         {
             this->cells[index] = oldCell;
+            // Rejected: current synth frame unchanged; cached cost remains valid
         }
     };
     if (newCost - oldCost < 0){
@@ -342,19 +349,22 @@ CostCallbackPair Frame::split()
 
     auto newSynthFrame = generateSynthFrame(); 
     double newCost = calculateCost(newSynthFrame);
-    double oldCost = calculateCost(_synthFrame);
+    double oldCost = _cachedSynthCostValid ? _cachedSynthCost : calculateCost(_synthFrame);
 
-    CallBackFunc callback = [this, newSynthFrame, oldCell, index](bool accept)
+    CallBackFunc callback = [this, newSynthFrame, newCost, oldCell, index](bool accept)
     {
         if (accept)
         {
             this->_synthFrame = newSynthFrame;
+            this->_cachedSynthCost = newCost;
+            this->_cachedSynthCostValid = true;
         }
         else
         {
             this->cells.pop_back();
             this->cells.pop_back();
             this->cells.insert(this->cells.begin() + index, oldCell);
+            // Rejected: current synth frame unchanged; cached cost remains valid
         }
     };
 

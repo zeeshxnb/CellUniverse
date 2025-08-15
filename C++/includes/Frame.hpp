@@ -46,6 +46,9 @@ private:
     std::vector<cv::Mat> _realFrame;
     std::vector<cv::Mat> _realFrameCopy; // copy of realFrame
     std::vector<cv::Mat> _synthFrame;
+    // Cached cost of the currently accepted synthetic frame. Valid as long as _synthFrame hasn't changed.
+    double _cachedSynthCost = 0.0;
+    bool _cachedSynthCostValid = false;
     cv::Size getImageShape();
     Cost costOfPerturb(const std::string &perturbParam, float perturbVal, size_t index, const Cell &oldCell);
     ParamImageMap getSynthPerturbedCells(size_t index, const ParamValMap &params, float perturbLength, const Cell &oldCell);
